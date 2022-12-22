@@ -8,7 +8,9 @@ const session = require("express-session");
 const passport = require("passport");
 const passportLocalMongoose = require("passport-local-mongoose");
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const GitHubStrategy = require("passport-github2").Strategy;
 const findOrCreate = require('mongoose-find-or-create');
+
 
 const app = express();
 
@@ -42,8 +44,9 @@ app.use(passport.session());
 /////////  SCHEMA  ///////////
 const userSchema = new mongoose.Schema({
   email: String,
-  password: String,
+  username: String,
   googleId:String,
+  githubId:String,
 });
 
 userSchema.plugin(passportLocalMongoose);
@@ -74,14 +77,15 @@ passport.use(new GoogleStrategy({
   userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo",
 },
 function(accessToken, refreshToken, profile, cb) {
-  User.findOrCreate({ googleId: profile.id }, function (err, user) {
+  // console.log(profile);
+  User.findOrCreate({ email: profile.emails[0].value,googleId: profile.id }, function (err, user) {
     return cb(err, user);
   }); 
 }
 ));
 
 app.get("/auth/google",
-  passport.authenticate("google",{scope:["profile"]})
+  passport.authenticate("google",{scope:["profile","email"]})
 );
 
 app.get("/auth/google/secrets",
@@ -91,6 +95,28 @@ app.get("/auth/google/secrets",
   }
 );
 
+///////////////  GITHUB //////////////
+passport.use(new GitHubStrategy({
+  clientID: process.env.GITHUB_CLIENT_ID,
+  clientSecret: process.env.GITHUB_CLIENT_SECRET,
+  callbackURL: "http://localhost:3000/auth/github/secrets"
+},
+function(accessToken, refreshToken, profile, done) {
+  // console.log(profile);
+  User.findOrCreate({username:profile.username,githubId: profile.id }, function (err, user) {
+    return done(err, user);
+  });
+}
+));
+app.get('/auth/github',
+  passport.authenticate('github', { scope: [ 'user:email' ] }));
+
+app.get('/auth/github/secrets', 
+  passport.authenticate('github', { failureRedirect: '/login' }),
+  function(req, res) {
+    // Successful authentication, redirect home.
+    res.redirect('/secrets');
+  });
 
 
 ///////////  HOME //////////////
